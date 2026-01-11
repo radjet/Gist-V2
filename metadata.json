@@ -1,0 +1,5 @@
+{
+  "name": "Gist",
+  "description": "A real-time global news intelligence platform visualizing story clusters on a globe.",
+  "requestFramePermissions": []
+}
