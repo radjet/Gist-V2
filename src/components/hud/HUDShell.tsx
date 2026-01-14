@@ -2,6 +2,7 @@ import React from 'react';
 import { TopHUD } from './TopHUD';
 import { BottomLeftHUD } from './BottomLeftHUD';
 import { BottomRightHUD } from './BottomRightHUD';
+import { HotspotStack } from './HotspotStack';
 
 export const HUDShell: React.FC = () => {
   return (
@@ -10,6 +11,9 @@ export const HUDShell: React.FC = () => {
       <header className="w-full">
         <TopHUD />
       </header>
+      
+      {/* Floating Panels */}
+      <HotspotStack />
 
       {/* Bottom Section */}
       <div className="w-full flex items-end justify-between">

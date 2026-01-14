@@ -2,7 +2,7 @@ import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import GlobePage from './src/app/GlobePage';
 import SettingsPage from './src/app/SettingsPage';
-import ClusterDrawer from './src/features/clusters/ClusterDrawer';
+import ClusterDrawer from './src/components/ClusterDrawer';
 
 const App: React.FC = () => {
   return (

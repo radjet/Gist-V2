@@ -97,14 +97,14 @@ const ClusterDrawer: React.FC = () => {
               <div className="flex justify-between items-start mb-2">
                 <div className="flex items-center gap-2 text-xs text-muted">
                    <span className="flex items-center gap-1">
-                     <MapPin size={12} /> {cluster.locationLabel}
+                     <MapPin size={12} /> {cluster.displayLocation || 'Global'}
                    </span>
                    <span>•</span>
                    <span className="flex items-center gap-1">
-                     <Clock size={12} /> {formatTime(cluster.updatedAt)}
+                     <Clock size={12} /> {formatTime(cluster.lastSeenAt)}
                    </span>
                 </div>
-                {cluster.breakingScore > 80 && (
+                {cluster.isBreaking && (
                   <span className="flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded">
                     <AlertCircle size={10} /> BREAKING
                   </span>
@@ -114,7 +114,7 @@ const ClusterDrawer: React.FC = () => {
               <h3 className={`font-medium text-sm mb-1 line-clamp-2 ${
                 selectedClusterId === cluster.id ? 'text-white' : 'text-slate-200 group-hover:text-white'
               }`}>
-                {cluster.title}
+                {cluster.headline}
               </h3>
               
               <p className="text-xs text-muted line-clamp-3 leading-relaxed">

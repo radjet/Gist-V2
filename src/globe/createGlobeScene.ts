@@ -4,7 +4,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // --- Constants & Config ---
 
 const GLOBE_RADIUS = 6;
-const MAPBOX_TOKEN_DEFAULT = "pk.eyJ1IjoicmFkamV0IiwiYSI6ImNsZmRyZm10NjBtNzEzdG82MjIxZTc0Z3AifQ.vgXGJlkIxIc6tgu6G-HRag";
+// Use Vite env var if available, otherwise fallback to the hardcoded token
+const MAPBOX_TOKEN_DEFAULT = (import.meta as any).env.VITE_MAPBOX_TOKEN || "pk.eyJ1IjoicmFkamV0IiwiYSI6ImNsZmRyZm10NjBtNzEzdG82MjIxZTc0Z3AifQ.vgXGJlkIxIc6tgu6G-HRag";
 
 // --- Math Helpers ---
 
