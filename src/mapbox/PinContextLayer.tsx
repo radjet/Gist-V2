@@ -72,6 +72,7 @@ export const PinContextLayer: React.FC<PinContextLayerProps> = ({
 
         // 2. Identify Rendered (Visible) Features for Occlusion Check
         // queryRenderedFeatures is the source of truth for "is this point on the visible face of the globe?"
+        // We query the circles layer to know what Mapbox thinks is visible.
         const rendered = map.queryRenderedFeatures({ layers: ['clusters-circles'] });
         const renderedIds = new Set(rendered.map(f => f.properties?.id));
 
@@ -102,17 +103,16 @@ export const PinContextLayer: React.FC<PinContextLayerProps> = ({
         };
 
         // 4. Priority 1: Selected
+        // Always attempt to show selected, even if momentarily occluded by fast zoom
         if (selectedId) {
             const c = clusters.find(x => x.id === selectedId);
-            // We allow selected popup to show even if queryRenderedFeatures misses it momentarily (e.g. fast flyTo),
-            // provided map.project says it's on screen. 
             if (c) addPopup(c, 'selected');
         }
 
         // 5. Priority 2: Hovered
         if (hoveredId && hoveredId !== selectedId) {
             const c = clusters.find(x => x.id === hoveredId);
-            // Only show hover if actually visible/rendered to avoid confusing ghosts
+            // Only show hover if actually visible/rendered to avoid confusing ghosts through the globe
             if (c && renderedIds.has(c.id)) {
                 addPopup(c, 'hovered');
             }
@@ -122,11 +122,11 @@ export const PinContextLayer: React.FC<PinContextLayerProps> = ({
         // Filter candidates
         const candidates = clusters.filter(c => {
             if (processedIds.has(c.id)) return false; // Already added
-            if (!renderedIds.has(c.id)) return false; // Occluded/Off-screen
+            if (!renderedIds.has(c.id)) return false; // Occluded/Off-screen according to Mapbox
             return true;
         });
 
-        // Safe Zone Check for Auto Only
+        // Safe Zone Check for Auto Only (Don't clutter edges)
         const safeXMin = width * SAFE_MARGIN_X_PCT;
         const safeXMax = width * (1 - SAFE_MARGIN_X_PCT);
         const safeYMin = height * SAFE_MARGIN_Y_PCT;
@@ -157,7 +157,7 @@ export const PinContextLayer: React.FC<PinContextLayerProps> = ({
     map.on('resize', update);
     
     // Initial run
-    update();
+    performUpdate();
 
     return () => {
       map.off('move', update);
@@ -178,6 +178,7 @@ export const PinContextLayer: React.FC<PinContextLayerProps> = ({
         
         // CSS Transform for Position (Hardware Accelerated, No Transition Lag)
         // Note: -160% Y translation centers it above the pin
+        // IMPORTANT: We use translate3d for GPU acceleration and to avoid sub-pixel blurring issues sometimes seen with translate
         const transform = `translate3d(${p.x}px, ${p.y}px, 0) translate(-50%, -160%)`;
 
         return (
