@@ -65,14 +65,19 @@ const applyAtmosphere = (map: mapboxgl.Map) => {
 export const MapboxGlobeView: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<mapboxgl.Map | null>(null);
+  const vignetteRef = useRef<HTMLDivElement>(null);
+
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurGateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animationFrameRef = useRef<number>(0);
   
   const [error, setError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [focusCenter, setFocusCenter] = useState<{x: number, y: number} | null>(null);
   
-  // Local state for hover effects
+  // Dev Debug State
+  const [debugLastEvent, setDebugLastEvent] = useState<string>('-');
+
+  // Local state for hover effects only (low frequency)
   const [hoveredClusterId, setHoveredClusterId] = useState<string | null>(null);
   
   const { 
@@ -87,40 +92,48 @@ export const MapboxGlobeView: React.FC = () => {
     setViewportFeedIds,
     isScanEnabled,
     navRequestId,
-    navTargetClusterId
+    navTargetClusterId,
+    setMapMoving,
+    isMapMoving
   } = useUIStore(); 
 
   const token = (import.meta as any).env.VITE_MAPBOX_TOKEN;
 
-  // --- Dynamic Spotlight Tracker ---
+  // --- Dynamic Spotlight Tracker (Optimized: No React State Sync) ---
   useLayoutEffect(() => {
     const map = mapInstance.current;
-    if (!map || (!selectedClusterLngLat && !isScanEnabled)) {
-      if (focusCenter) setFocusCenter(null);
-      return;
-    }
+    if (!map || !mapReady) return;
 
-    const targetLngLat = selectedClusterLngLat; 
-    if (!targetLngLat) {
-        if (focusCenter) setFocusCenter(null);
-        return;
-    }
-
-    const updatePosition = () => {
-      const pos = map.project(targetLngLat);
-      setFocusCenter({ x: pos.x, y: pos.y });
+    // Direct DOM manipulation to avoid re-rendering component on every frame
+    const updateVignette = () => {
+       if (!vignetteRef.current) return;
+       
+       if (selectedClusterLngLat && isClusterDrawerOpen) {
+          const pos = map.project(selectedClusterLngLat);
+          
+          // Apply dynamic gradient centered on pin
+          vignetteRef.current.style.background = `radial-gradient(circle at ${pos.x}px ${pos.y}px, rgba(0,0,0,0) 0px, rgba(0,0,0,${VIGNETTE_MID_ALPHA}) ${VIGNETTE_INNER_RADIUS}px, rgba(0,0,0,${VIGNETTE_EDGE_ALPHA}) ${VIGNETTE_OUTER_RADIUS}px)`;
+       } else {
+          // Fallback centered gradient
+          vignetteRef.current.style.background = `radial-gradient(circle at center, rgba(0,0,0,0) 0%, rgba(0,0,0,${VIGNETTE_MID_ALPHA}) 40%, rgba(0,0,0,${VIGNETTE_EDGE_ALPHA}) 100%)`;
+       }
     };
 
-    updatePosition();
-    const onMove = () => requestAnimationFrame(updatePosition);
+    const onMove = () => {
+       requestAnimationFrame(updateVignette);
+    };
+
     map.on('move', onMove);
-    map.on('moveend', updatePosition);
+    map.on('moveend', updateVignette);
+    
+    // Initial call
+    updateVignette();
 
     return () => {
       map.off('move', onMove);
-      map.off('moveend', updatePosition);
+      map.off('moveend', updateVignette);
     };
-  }, [selectedClusterLngLat, isScanEnabled, mapReady]);
+  }, [selectedClusterLngLat, isClusterDrawerOpen, mapReady]);
 
   // --- DETERMINISTIC CAMERA NAVIGATION ---
   useEffect(() => {
@@ -299,10 +312,23 @@ export const MapboxGlobeView: React.FC = () => {
          // No-op for now as autoplay is removed
       };
 
-      map.on('mousedown', handleUserInteraction);
-      map.on('wheel', handleUserInteraction);
-      map.on('dragstart', handleUserInteraction);
+      // --- BLUR GATING LOGIC ---
+      map.on('movestart', () => {
+        if (blurGateTimer.current) clearTimeout(blurGateTimer.current);
+        setMapMoving(true);
+        if ((import.meta as any).env.DEV) setDebugLastEvent('movestart');
+      });
 
+      map.on('idle', () => {
+        // Debounce the restoration of blur to ensure we are settled
+        if (blurGateTimer.current) clearTimeout(blurGateTimer.current);
+        blurGateTimer.current = setTimeout(() => {
+          setMapMoving(false);
+          if ((import.meta as any).env.DEV) setDebugLastEvent('idle (settled)');
+        }, 150);
+      });
+
+      // --- VIEWPORT FEED UPDATE (Debounced) ---
       const handleMoveEnd = () => {
         const m = mapInstance.current;
         if (!m || !m.getStyle()) return;
@@ -323,6 +349,10 @@ export const MapboxGlobeView: React.FC = () => {
         }, 400); 
       };
 
+      map.on('mousedown', handleUserInteraction);
+      map.on('wheel', handleUserInteraction);
+      map.on('dragstart', handleUserInteraction);
+      
       map.on('load', () => {
           if (!map || !map.getStyle()) return;
 
@@ -513,6 +543,7 @@ export const MapboxGlobeView: React.FC = () => {
     return () => {
       setMapReady(false); 
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      if (blurGateTimer.current) clearTimeout(blurGateTimer.current);
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (mapInstance.current) {
         mapInstance.current.remove();
@@ -531,23 +562,22 @@ export const MapboxGlobeView: React.FC = () => {
 
   return (
     <>
-        {/* Pin-Centered Spotlight Vignette (Dynamic) */}
-        {isClusterDrawerOpen && focusCenter && (
-          <div 
-            className="absolute inset-0 pointer-events-none z-10 transition-all duration-300 ease-out"
-            style={{
-              background: `radial-gradient(circle at ${focusCenter.x}px ${focusCenter.y}px, rgba(0,0,0,0) 0px, rgba(0,0,0,${VIGNETTE_MID_ALPHA}) ${VIGNETTE_INNER_RADIUS}px, rgba(0,0,0,${VIGNETTE_EDGE_ALPHA}) ${VIGNETTE_OUTER_RADIUS}px)`
-            }}
-          />
+        {/* DEV OVERLAY */}
+        {(import.meta as any).env.DEV && (
+          <div className="absolute top-24 left-4 z-50 pointer-events-none bg-black/70 p-2 rounded text-[10px] font-mono text-green-400 border border-green-900">
+            <div>MAP MOVING: {isMapMoving ? 'YES' : 'NO'}</div>
+            <div>LAST EVT: {debugLastEvent}</div>
+          </div>
         )}
-        {isClusterDrawerOpen && !focusCenter && (
-           <div 
-             className="absolute inset-0 pointer-events-none z-10"
-             style={{
-               background: `radial-gradient(circle at center, rgba(0,0,0,0) 0%, rgba(0,0,0,${VIGNETTE_MID_ALPHA}) 40%, rgba(0,0,0,${VIGNETTE_EDGE_ALPHA}) 100%)`
-             }}
-           />
-        )}
+
+        {/* Pin-Centered Spotlight Vignette (Managed via Ref, no State) */}
+        <div 
+          ref={vignetteRef}
+          className="absolute inset-0 pointer-events-none z-10 transition-all duration-300 ease-out"
+          style={{
+            background: `radial-gradient(circle at center, rgba(0,0,0,0) 0%, rgba(0,0,0,${VIGNETTE_MID_ALPHA}) 40%, rgba(0,0,0,${VIGNETTE_EDGE_ALPHA}) 100%)`
+          }}
+        />
 
         <div 
           ref={mapContainer} 

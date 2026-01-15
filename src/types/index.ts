@@ -31,6 +31,9 @@ export interface UIState {
   userLocation: UserLocation | null;
   isHotspotStackOpen: boolean;
 
+  // Performance Gating
+  isMapMoving: boolean;
+
   openDrawer: () => void;
   closeDrawer: () => void;
   openPreview: () => void;
@@ -39,6 +42,7 @@ export interface UIState {
   toggleDrawer: () => void;
   toggleHeatmap: () => void;
   setViewportFeedIds: (ids: string[]) => void;
+  setMapMoving: (isMoving: boolean) => void;
   
   // Navigation Actions
   toggleScan: () => void;

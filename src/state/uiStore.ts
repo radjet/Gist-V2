@@ -61,6 +61,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   userLocation: null,
   isHotspotStackOpen: false,
 
+  // Performance Gating
+  isMapMoving: false,
+
   openDrawer: () => set({ isClusterDrawerOpen: true, isPreviewOpen: false }),
   closeDrawer: () => set({ isClusterDrawerOpen: false }),
   
@@ -86,6 +89,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleDrawer: () => set((state) => ({ isClusterDrawerOpen: !state.isClusterDrawerOpen })),
   toggleHeatmap: () => set((state) => ({ isHeatmapEnabled: !state.isHeatmapEnabled })),
   setViewportFeedIds: (ids) => set({ viewportFeedIds: ids }),
+  setMapMoving: (isMoving) => set({ isMapMoving: isMoving }),
 
   // Navigation Actions
   toggleScan: () => set((state) => {

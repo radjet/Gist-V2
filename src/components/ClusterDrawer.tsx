@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, MapPin, Clock, Newspaper, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useUIStore } from '../state/uiStore';
 import { mockClusters } from '../mock/mockClusters';
 import { BiasMeter } from './BiasMeter';
@@ -11,10 +12,21 @@ const ClusterDrawer: React.FC = () => {
     closePreview,
     isPreviewOpen,
     selectedClusterId, 
+    isMapMoving
   } = useUIStore();
   
   const drawerRef = useRef<HTMLDivElement>(null);
   const selectedCluster = mockClusters.find(c => c.id === selectedClusterId);
+  const shouldReduceMotion = useReducedMotion();
+  const [isSmallScreen, setIsSmallScreen] = useState(false);
+
+  // Responsive check for blur optimization
+  useEffect(() => {
+    const checkSize = () => setIsSmallScreen(window.innerWidth < 768);
+    checkSize();
+    window.addEventListener('resize', checkSize);
+    return () => window.removeEventListener('resize', checkSize);
+  }, []);
 
   // Keyboard support (Escape only)
   useEffect(() => {
@@ -26,7 +38,7 @@ const ClusterDrawer: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isClusterDrawerOpen, isPreviewOpen]);
+  }, [isClusterDrawerOpen, isPreviewOpen, closeDrawer, closePreview]);
 
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
@@ -51,155 +63,208 @@ const ClusterDrawer: React.FC = () => {
     selectedCluster.tag === 'ECONOMY'
   );
 
-  if (!isClusterDrawerOpen) return null;
+  // Animation Variants
+  const panelVariants = {
+    initial: { 
+      opacity: 0, 
+      x: 50,
+      scale: 0.98
+    },
+    animate: { 
+      opacity: 1, 
+      x: 0,
+      scale: 1,
+      transition: { 
+        duration: 0.4, 
+        ease: [0.25, 1, 0.5, 1], // easeOutQuart-ish
+      }
+    },
+    exit: { 
+      opacity: 0, 
+      x: 20, 
+      transition: { duration: 0.2, ease: "easeIn" }
+    }
+  };
+
+  // No-motion fallback
+  const staticVariants = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 }
+  };
+
+  const activeVariants = shouldReduceMotion ? staticVariants : panelVariants;
+  
+  // Blur Logic:
+  // 1. If reduced motion OR moving map -> NO BLUR (perf)
+  // 2. If small screen -> Medium Blur
+  // 3. Desktop stable -> XL Blur
+  let blurClass = 'backdrop-blur-xl bg-surface/80';
+  if (shouldReduceMotion || isMapMoving) {
+      blurClass = 'backdrop-blur-none bg-surface/95';
+  } else if (isSmallScreen) {
+      blurClass = 'backdrop-blur-md bg-surface/80';
+  }
 
   return (
-    <>
-      {/* Subtle Backdrop (Clickable) */}
-      <div 
-        className="fixed inset-0 z-30 bg-transparent"
-        onClick={closeDrawer}
-        aria-hidden="true"
-      />
+    <AnimatePresence>
+      {isClusterDrawerOpen && (
+        <>
+          {/* Subtle Backdrop (Clickable) */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-30 bg-transparent"
+            onClick={closeDrawer}
+            aria-hidden="true"
+          />
 
-      {/* Floating Panel */}
-      <aside
-        ref={drawerRef}
-        className="fixed top-4 right-4 bottom-4 w-full sm:w-[420px] max-w-[calc(100vw-32px)] bg-surface/95 backdrop-blur-xl border border-white/10 shadow-2xl z-40 rounded-2xl overflow-hidden flex flex-col animate-in slide-in-from-right-8 duration-300"
-      >
-        {selectedCluster ? (
-          <>
-            {/* Header / Hero */}
-            <div className="flex-shrink-0 bg-surface/50 border-b border-white/5 relative">
-               {/* Close Overlay */}
-               <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
-                 <button onClick={closeDrawer} className="p-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 transition-colors shadow-sm">
-                    <X size={16} />
-                 </button>
-               </div>
+          {/* Floating Panel */}
+          <motion.aside
+            ref={drawerRef}
+            variants={activeVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className={`fixed top-4 right-4 bottom-4 w-full sm:w-[420px] max-w-[calc(100vw-32px)] border border-white/10 shadow-2xl z-40 rounded-2xl overflow-hidden flex flex-col will-change-transform transition-colors duration-200 ${blurClass}`}
+          >
+            {selectedCluster ? (
+              <>
+                {/* Header / Hero */}
+                <div className="flex-shrink-0 bg-surface/50 border-b border-white/5 relative">
+                   {/* Close Overlay */}
+                   <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
+                     <button onClick={closeDrawer} className="p-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 transition-colors shadow-sm">
+                        <X size={16} />
+                     </button>
+                   </div>
 
-               {/* Hero Image */}
-               {selectedCluster.imageUrl && (
-                 <div className="w-full h-40 relative">
-                    <img 
-                      src={selectedCluster.imageUrl} 
-                      alt="" 
-                      className="w-full h-full object-cover opacity-80"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-surface/95" />
-                 </div>
-               )}
+                   {/* Hero Image */}
+                   {selectedCluster.imageUrl && (
+                     <div className="w-full h-40 relative">
+                        <img 
+                          src={selectedCluster.imageUrl} 
+                          alt="" 
+                          className="w-full h-full object-cover opacity-80"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-surface/90" />
+                     </div>
+                   )}
 
-               <div className="p-5 pt-4 relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider border ${getTagColor(selectedCluster.tag)}`}>
-                      {selectedCluster.tag}
-                    </span>
-                    {selectedCluster.displayLocation && (
-                      <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">
-                        • {selectedCluster.displayLocation}
-                      </span>
-                    )}
-                  </div>
+                   <div className="p-5 pt-4 relative">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider border ${getTagColor(selectedCluster.tag)}`}>
+                          {selectedCluster.tag}
+                        </span>
+                        {selectedCluster.displayLocation && (
+                          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">
+                            • {selectedCluster.displayLocation}
+                          </span>
+                        )}
+                      </div>
 
-                  <h2 className="text-xl font-bold text-white leading-tight mb-3">
-                    {selectedCluster.headline}
-                  </h2>
-                  
-                  {/* Processing Status for Summary */}
-                  {selectedCluster.status === 'processing' ? (
-                     <div className="space-y-2 animate-pulse">
-                        <div className="h-3 bg-white/10 rounded w-full" />
-                        <div className="h-3 bg-white/10 rounded w-5/6" />
-                        <div className="h-3 bg-white/10 rounded w-4/6" />
-                        <div className="text-xs text-blue-400 flex items-center gap-2 mt-2">
-                           <Loader2 size={12} className="animate-spin" />
-                           Synthesizing overview...
+                      <h2 className="text-xl font-bold text-white leading-tight mb-3">
+                        {selectedCluster.headline}
+                      </h2>
+                      
+                      {/* Processing Status for Summary */}
+                      {selectedCluster.status === 'processing' ? (
+                         <div className="space-y-2 animate-pulse">
+                            <div className="h-3 bg-white/10 rounded w-full" />
+                            <div className="h-3 bg-white/10 rounded w-5/6" />
+                            <div className="h-3 bg-white/10 rounded w-4/6" />
+                            <div className="text-xs text-blue-400 flex items-center gap-2 mt-2">
+                               <Loader2 size={12} className="animate-spin" />
+                               Synthesizing overview...
+                            </div>
+                         </div>
+                      ) : selectedCluster.status === 'failed' ? (
+                         <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300 flex items-center gap-2">
+                            <AlertTriangle size={14} />
+                            Unable to generate overview.
+                         </div>
+                      ) : (
+                         <p className="text-sm text-slate-300 leading-relaxed">
+                            {selectedCluster.summary}
+                         </p>
+                      )}
+
+                      <div className="flex items-center gap-4 mt-4 text-[10px] text-slate-500 font-mono border-t border-white/5 pt-3">
+                        <div className="flex items-center gap-1.5">
+                           <TrendingUp size={12} />
+                           INTENSITY: {Math.round(selectedCluster.intensity * 100)}
                         </div>
-                     </div>
-                  ) : selectedCluster.status === 'failed' ? (
-                     <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300 flex items-center gap-2">
-                        <AlertTriangle size={14} />
-                        Unable to generate overview.
-                     </div>
-                  ) : (
-                     <p className="text-sm text-slate-300 leading-relaxed">
-                        {selectedCluster.summary}
-                     </p>
-                  )}
-
-                  <div className="flex items-center gap-4 mt-4 text-[10px] text-slate-500 font-mono border-t border-white/5 pt-3">
-                    <div className="flex items-center gap-1.5">
-                       <TrendingUp size={12} />
-                       INTENSITY: {Math.round(selectedCluster.intensity * 100)}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                       <Clock size={12} />
-                       {formatTime(selectedCluster.lastSeenAt)}
-                    </div>
-                  </div>
-                  
-                  {/* Bias Meter Block (Spectrum) - Conditionally Rendered */}
-                  {showPerspective && selectedCluster.bias && (
-                     <div className="mt-4 pt-3 border-t border-white/5">
-                        <BiasMeter bias={selectedCluster.bias} />
-                     </div>
-                  )}
-               </div>
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-surface/30 gist-scroll">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider sticky top-0 bg-surface/95 backdrop-blur py-2 z-10">
-                <Newspaper size={14} className="text-primary" />
-                Coverage ({selectedCluster.coverage.length})
-              </div>
-
-              {selectedCluster.coverage.map((item) => (
-                <a 
-                  key={item.id}
-                  href={item.url}
-                  className="block group rounded-xl border border-white/5 bg-white/5 overflow-hidden hover:bg-white/10 hover:border-white/20 transition-all"
-                >
-                   <div className="flex">
-                      {item.imageUrl && (
-                         <div className="w-24 h-auto relative shrink-0">
-                           <img src={item.imageUrl} className="w-full h-full object-cover" alt="" />
+                        <div className="flex items-center gap-1.5">
+                           <Clock size={12} />
+                           {formatTime(selectedCluster.lastSeenAt)}
+                        </div>
+                      </div>
+                      
+                      {/* Bias Meter Block (Spectrum) - Conditionally Rendered */}
+                      {showPerspective && selectedCluster.bias && (
+                         <div className="mt-4 pt-3 border-t border-white/5">
+                            <BiasMeter bias={selectedCluster.bias} />
                          </div>
                       )}
-                      <div className="p-3 flex-1 min-w-0">
-                         <div className="flex justify-between items-start mb-1">
-                            <span className="text-[10px] font-bold text-primary/90">
-                              {item.sourceName} <span className="opacity-50 font-normal">{item.sourceCountry}</span>
-                            </span>
-                            <span className="text-[9px] text-slate-500 whitespace-nowrap ml-2">
-                               {formatTime(item.publishedAt)}
-                            </span>
-                         </div>
-                         <h3 className="text-xs font-medium text-slate-200 group-hover:text-white leading-snug line-clamp-2 mb-1.5">
-                           {item.headline}
-                         </h3>
-                         {item.status === 'processing' ? (
-                            <div className="h-2 w-2/3 bg-white/10 rounded animate-pulse" />
-                         ) : (
-                            <p className="text-[10px] text-slate-400 line-clamp-2">
-                               {item.summary}
-                            </p>
-                         )}
-                      </div>
                    </div>
-                </a>
-              ))}
-            </div>
-          </>
-        ) : (
-           <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 text-center">
-              <MapPin className="mb-4 opacity-50" size={32} />
-              <p className="text-sm">Select a hotspot to view intelligence.</p>
-           </div>
-        )}
-      </aside>
-    </>
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-surface/30 gist-scroll">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider sticky top-0 bg-surface/95 backdrop-blur-md py-2 z-10 border-b border-white/5">
+                    <Newspaper size={14} className="text-primary" />
+                    Coverage ({selectedCluster.coverage.length})
+                  </div>
+
+                  {selectedCluster.coverage.map((item) => (
+                    <a 
+                      key={item.id}
+                      href={item.url}
+                      className="block group rounded-xl border border-white/5 bg-white/5 overflow-hidden hover:bg-white/10 hover:border-white/20 transition-all"
+                    >
+                       <div className="flex">
+                          {item.imageUrl && (
+                             <div className="w-24 h-auto relative shrink-0">
+                               <img src={item.imageUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
+                             </div>
+                          )}
+                          <div className="p-3 flex-1 min-w-0">
+                             <div className="flex justify-between items-start mb-1">
+                                <span className="text-[10px] font-bold text-primary/90">
+                                  {item.sourceName} <span className="opacity-50 font-normal">{item.sourceCountry}</span>
+                                </span>
+                                <span className="text-[9px] text-slate-500 whitespace-nowrap ml-2">
+                                   {formatTime(item.publishedAt)}
+                                </span>
+                             </div>
+                             <h3 className="text-xs font-medium text-slate-200 group-hover:text-white leading-snug line-clamp-2 mb-1.5">
+                               {item.headline}
+                             </h3>
+                             {item.status === 'processing' ? (
+                                <div className="h-2 w-2/3 bg-white/10 rounded animate-pulse" />
+                             ) : (
+                                <p className="text-[10px] text-slate-400 line-clamp-2">
+                                   {item.summary}
+                                </p>
+                             )}
+                          </div>
+                       </div>
+                    </a>
+                  ))}
+                </div>
+              </>
+            ) : (
+               <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 text-center">
+                  <MapPin className="mb-4 opacity-50" size={32} />
+                  <p className="text-sm">Select a hotspot to view intelligence.</p>
+               </div>
+            )}
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
   );
 };
 
